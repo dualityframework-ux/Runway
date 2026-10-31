@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Runway case study — how low will my balance get before payday?</title>
+<meta name="description" content="Why I built a forward-looking cash-flow planner instead of another budget tracker, how the forecast and debt payoff math work, and what it still can't do.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Runway case study — how low will my balance get before payday?">
+<meta property="og:description" content="A forward-looking cash-flow and debt payoff planner. By Ian Kachadorian.">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a single readable column, like a bank passbook note, numbers in mono */
+:root{
+  --bg:#EEF1F5; --sheet:#FBFCFE; --ink:#172033; --muted:#5C6678; --rule:#D5DBE5;
+  --accent:#2D4FA3; --accent-soft:#E1E8F7; --good:#1F7A4D; --bad:#B23A2E;
+  --f-display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0E1320; --sheet:#151C2C; --ink:#E4E9F2; --muted:#95A0B4; --rule:#29324A;
+  --accent:#8FA9F0; --accent-soft:#1E2944; --good:#5CC49B; --bad:#F07A6B; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{margin:0;font:17px/1.65 var(--f-body)}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:46rem;margin:0 auto;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+.crumb{font-size:.85rem;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
+.eyebrow{font-size:.75rem;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);font-weight:600;margin:34px 0 6px}
+h1{font-family:var(--f-display);font-size:clamp(2rem,6vw,2.8rem);line-height:1.08;letter-spacing:-.03em;font-weight:800;margin:0 0 14px;text-wrap:balance}
+.dek{font-size:1.15rem;color:var(--muted);margin:0 0 20px}
+.meta{font-size:.85rem;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;padding-bottom:22px;border-bottom:1px solid var(--rule)}
+h2{font-family:var(--f-display);font-size:1.4rem;letter-spacing:-.015em;margin:40px 0 10px;text-wrap:balance}
+h3{font-size:1.05rem;margin:26px 0 6px}
+p{margin:0 0 14px}
+ul,ol{margin:0 0 14px;padding-left:1.3rem}
+li{margin-bottom:6px}
+.num,code{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:.92em}
+.callout{background:var(--sheet);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:8px;padding:14px 16px;margin:18px 0}
+.callout p:last-child{margin:0}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}
+.stat{background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:12px}
+.stat .v{font-family:var(--f-num);font-size:1.4rem;font-weight:600}
+.stat .k{font-size:.8rem;color:var(--muted)}
+.formula{font-family:var(--f-num);font-size:.9rem;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;overflow-x:auto;white-space:pre;margin:12px 0}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:34px;padding-top:22px;border-top:1px solid var(--rule)}
+.btn{display:inline-block;font-weight:600;text-decoration:none;border:1px solid var(--accent);background:var(--accent);color:var(--sheet);border-radius:8px;padding:10px 16px}
+.btn.ghost{background:transparent;color:var(--accent)}
+@media (max-width:520px){.stats{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <nav class="crumb" aria-label="Breadcrumb"><a href="https://dualityframework-ux.github.io/duality-framework/">Duality</a><span>/</span><a href="./">Runway</a><span>/</span><span>Case study</span></nav>
+
+  <p class="eyebrow">Case study</p>
+  <h1>How low will my balance get before payday?</h1>
+  <p class="dek">Why I built a forward-looking cash-flow planner instead of another budget tracker, how the forecast and payoff math work, and what it still can't do.</p>
+  <div class="meta"><span>Ian Kachadorian</span><span>October 2026</span><span>5 min read</span></div>
+
+  <h2>The problem</h2>
+  <p>Most budgeting apps answer a question about the past: where did my money go? When you are paid every two weeks and juggling a handful of bills and cards, the question that matters is about the next few weeks:</p>
+  <ul>
+    <li>What is the lowest my checking account will get before the next paycheck?</li>
+    <li>How much can I send to a credit card today without cutting it close?</li>
+    <li>If I pay an extra $100 a month, when am I actually debt-free?</li>
+  </ul>
+  <p>I was answering these by hand with a spreadsheet. Runway started as my own tracker, then I generalized it so anyone could use it.</p>
+
+  <h2>The approach</h2>
+
+  <h3>1. Walk the calendar one day at a time</h3>
+  <p>The forecast starts from today's balance and steps forward 60 days. Each bill lands on its due day, clamped to the last day of shorter months, and is skipped if it is already checked off. Each paycheck lands on its schedule. Everyday spending is spread evenly across every day, so the line drifts down between bills the way a real account does.</p>
+  <div class="formula">balance(day) = balance(day − 1)
+             − monthly spending budget × 12 ÷ 365
+             − bills due that day
+             + paychecks that day</div>
+  <p>The lowest point in that series is the number that matters. Subtract the safety floor you set, and what is left is the amount you can safely put toward debt right now.</p>
+
+  <h3>2. Simulate the debt payoff month by month</h3>
+  <p>Each month, every balance accrues interest at its APR ÷ 12 and gets its minimum payment. The extra payment, plus any minimums freed up by accounts already paid off, goes to one target: the highest APR first (avalanche) or the smallest balance first (snowball). Running the simulation twice, with and without the extra payment, shows exactly what the extra money buys.</p>
+
+  <h3>3. Make privacy a feature</h3>
+  <p>Runway never asks for a bank login. Everything is typed in and saved in the browser on your own device, with a copy-and-paste backup to move it. That costs automatic syncing, but plenty of people would rather type five numbers than hand over bank credentials.</p>
+
+  <h3>4. Open on a working example</h3>
+  <p>A first-time visitor sees a full forecast built on clearly labeled sample numbers, not an empty form. One tap clears the sample and goes to setup.</p>
+
+  <h2>The result</h2>
+  <p>On the sample household, with $3,200 in checking and $16,900 across three debts (forecast run on October 31, 2026):</p>
+  <div class="stats" role="list">
+    <div class="stat" role="listitem"><div class="v">$1,632</div><div class="k">Projected low point, before the next paycheck</div></div>
+    <div class="stat" role="listitem"><div class="v">$632</div><div class="k">Safe to send to debt, above a $1,000 floor</div></div>
+    <div class="stat" role="listitem"><div class="v">$2,745</div><div class="k">Interest saved by an extra $100 a month</div></div>
+  </div>
+  <p>The extra $100 a month moves the debt-free date from January 2033 to December 2030. The app is live and can be added to a phone's home screen with its own icon.</p>
+
+  <h2>The limits</h2>
+  <ul>
+    <li><b>It is only as current as the last balance update.</b> There is no bank feed, so a forecast drifts if the balance is not refreshed on payday.</li>
+    <li><b>Spending is spread evenly.</b> A big grocery run on one day can push the real low point below the forecast. The safety floor exists to absorb that.</li>
+    <li><b>Promotional rates never end.</b> A 0% card stays at 0% forever in the simulation, which can make the payoff order look better than it will be.</li>
+    <li><b>Data lives on one device.</b> The backup works, but it is manual.</li>
+  </ul>
+
+  <h2>What I would build next</h2>
+  <ol>
+    <li>Promo-rate end dates, so a 0% card switches to its regular APR on schedule.</li>
+    <li>Irregular bills: quarterly, annual and one-off.</li>
+    <li>A CSV import from a bank statement to fill the spending log.</li>
+  </ol>
+
+  <div class="callout"><p><b>Built with</b> plain JavaScript in one HTML file, no frameworks and no build step. Charts are hand-drawn SVG. State is a single JSON object in browser storage.</p></div>
+
+  <div class="cta"><a class="btn" href="./">Try Runway</a><a class="btn ghost" href="https://github.com/dualityframework-ux/Runway">Read the code</a><a class="btn ghost" href="https://dualityframework-ux.github.io/duality-framework/">More from Duality</a></div>
+</main>
+</body>
+</html>

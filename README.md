@@ -2,7 +2,7 @@
 
 # Runway
 
-**How far your cash goes before payday.**
+**How far your cash goes before payday.** [Try it live](https://dualityframework-ux.github.io/Runway/) · [Read the case study](https://dualityframework-ux.github.io/Runway/case-study.html)
 
 Runway is a mobile-first cash-flow and debt payoff planner. Most budgeting apps tell you where your money went. Runway tells you where it's headed: the lowest your checking account will dip over the next 60 days, how much you can safely send to debt today, and when you'll be debt-free.
 
