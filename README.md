@@ -18,7 +18,7 @@ Runway is a mobile-first cash-flow and debt payoff planner. Most budgeting apps 
 - **Safety floor.** Set a minimum balance you never want to drop below. Runway shows the room above it, which is the amount you can put toward debt without risking an overdraft.
 - **Bill checklist.** Check off bills as you pay them each month. Paid bills drop out of the forecast automatically. Bills can be monthly, every 3 or 6 months, yearly or one-time, and only show up in the months they're due.
 - **Debt payoff simulator.** Compares avalanche (highest APR first) and snowball (smallest balance first), shows the debt-free date with and without an extra monthly payment, and calculates the interest saved. Supports promo rates with an end date: the rate switches on schedule, and it warns how much will still be owed when the promo ends.
-- **Spending log.** Log purchases by category and track them against a monthly budget.
+- **Spending log.** Log purchases by category and track them against a monthly budget. Import a bank statement CSV: it detects the columns (including separate debit and credit columns), guesses categories from merchant names, skips deposits and duplicates, and shows a preview to correct before anything is added.
 - **Private by design.** No account, no bank login, no server. Data is saved in the browser on your own device, with a copy-and-paste backup to move it to another device.
 - **Works like an app.** Bottom tab navigation, light and dark themes, and an icon for adding it to a phone's home screen.
 
@@ -57,7 +57,6 @@ Open `index.html` in any modern browser. To host it, enable GitHub Pages on this
 ## Roadmap
 
 - Native iOS and Android app
-- CSV import from a bank statement for the spending log
 
 ## About
 
