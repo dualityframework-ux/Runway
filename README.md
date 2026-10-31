@@ -64,3 +64,7 @@ Open `index.html` in any modern browser. To host it, enable GitHub Pages on this
 ## About
 
 Built by **Ian Kachadorian**, a finance and data professional with a background in investment accounting and inventory analytics. Runway grew out of a personal cash-flow tracker I built for myself and then generalized so anyone can use it.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
