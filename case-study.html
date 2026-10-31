@@ -103,16 +103,16 @@ li{margin-bottom:6px}
   <ul>
     <li><b>It is only as current as the last balance update.</b> There is no bank feed, so a forecast drifts if the balance is not refreshed on payday.</li>
     <li><b>Spending is spread evenly.</b> A big grocery run on one day can push the real low point below the forecast. The safety floor exists to absorb that.</li>
-    <li><b>Promotional rates never end.</b> A 0% card stays at 0% forever in the simulation, which can make the payoff order look better than it will be.</li>
-    <li><b>Data lives on one device.</b> The backup works, but it is manual.</li>
+        <li><b>Data lives on one device.</b> The backup works, but it is manual.</li>
   </ul>
 
   <h2>What I would build next</h2>
   <ol>
-    <li>Promo-rate end dates, so a 0% card switches to its regular APR on schedule.</li>
-    <li>Irregular bills: quarterly, annual and one-off.</li>
+        <li>Irregular bills: quarterly, annual and one-off.</li>
     <li>A CSV import from a bank statement to fill the spending log.</li>
   </ol>
+
+  <p><b>Update:</b> promo-rate end dates are built. A card can carry a promo rate, the month it ends and the APR after. The simulation switches rates on schedule, re-ranks the payoff order when the rate jumps, and warns how much will still be owed when the promo ends. On the sample, a 0% store card would still owe about $580 when its rate jumps to 29.99%.</p>
 
   <div class="callout"><p><b>Built with</b> plain JavaScript in one HTML file, no frameworks and no build step. Charts are hand-drawn SVG. State is a single JSON object in browser storage.</p></div>
 

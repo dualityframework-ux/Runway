@@ -62,6 +62,7 @@ p{margin:0}
 .row.pay .n{font-weight:600;color:var(--accent)}
 .pill{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:600;letter-spacing:.02em}
 .pill.bad{background:var(--bad-soft);color:var(--bad)}
+.promo-warn{margin:0;padding:10px 12px;border:1px solid var(--warn);border-radius:8px;font-size:.88rem;color:var(--ink)}
 .pill.brass{background:transparent;border:1px solid var(--brass);color:var(--brass)}
 button,.btn{font:inherit;font-weight:600;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:9px 14px;cursor:pointer}
 button.ghost{background:transparent;color:var(--accent)}
@@ -152,6 +153,7 @@ const short = dt => dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})
 const monthName = k => { const [y,m]=k.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"}); };
 const shiftMonth = (k, n) => { const [y,m]=k.split("-").map(Number); return mkey(new Date(y, m-1+n, 1)); };
 const todayKey = () => mkey(new Date());
+const shortMonth = k => { const [y,m]=k.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-US",{month:"short",year:"numeric"}); };
 
 function normalize(s){
   s = s || {};
@@ -183,7 +185,7 @@ function sampleState(){
     bills, paid, log,
     budget:[{id:uid(),name:"Groceries",monthly:450},{id:uid(),name:"Gas",monthly:180},{id:uid(),name:"Dining out",monthly:150},{id:uid(),name:"Other",monthly:120}],
     debts:[{id:uid(),name:"Visa",balance:4200,apr:24.99,payment:120,note:""},
-           {id:uid(),name:"Store card",balance:900,apr:29.99,payment:40,note:""},
+           {id:uid(),name:"Store card",balance:900,apr:0,payment:40,promoUntil:mkey(addDays(t,240)),aprAfter:29.99,note:""},
            {id:uid(),name:"Student loan",balance:11800,apr:5.5,payment:150,note:"Fixed rate"}]
   });
 }
@@ -250,16 +252,20 @@ function lineChart(series, floor){
 
 // ---------- debt simulation ----------
 function simulate(extra, method){
-  let debts = S.debts.map(d=>({id:d.id,name:d.name,bal:+d.balance||0,apr:+d.apr||0,pay:+d.payment||0,paidOff:null,interest:0}));
+  let debts = S.debts.map(d=>({id:d.id,name:d.name,bal:+d.balance||0,apr:+d.apr||0,pay:+d.payment||0,paidOff:null,interest:0,
+    promoUntil:d.promoUntil||"", aprAfter:d.aprAfter===""||d.aprAfter==null?null:+d.aprAfter}));
   const start = D(S.asOf); let month = 0, totalInt = 0; const curve = [debts.reduce((t,d)=>t+d.bal,0)];
+  // A promo rate applies through the end of its "promo ends" month, then the after-promo APR takes over.
+  const rateFor = (d, m) => d.promoUntil && d.aprAfter!=null && mkey(new Date(start.getFullYear(), start.getMonth()+m, 1)) > d.promoUntil ? d.aprAfter : d.apr;
   while (debts.some(d=>d.bal>0.005) && month < 600){
     month++;
-    for (const d of debts){ if (d.bal>0){ const i = d.bal*d.apr/100/12; d.bal+=i; d.interest+=i; totalInt+=i; } }
+    for (const d of debts){ d.cur = rateFor(d, month); if (d.bal>0){ const i = d.bal*d.cur/100/12; d.bal+=i; d.interest+=i; totalInt+=i; } }
     let pool = extra;
     for (const d of debts){ if (d.bal<=0) { pool += d.pay; continue; } const p = Math.min(d.pay, d.bal); d.bal -= p; pool += d.pay - p; }
-    const order = debts.filter(d=>d.bal>0.005).sort(method==="snowball" ? (a,b)=>a.bal-b.bal : (a,b)=>b.apr-a.apr || a.bal-b.bal);
+    const order = debts.filter(d=>d.bal>0.005).sort(method==="snowball" ? (a,b)=>a.bal-b.bal : (a,b)=>b.cur-a.cur || a.bal-b.bal);
     for (const d of order){ if (pool<=0) break; const p = Math.min(pool, d.bal); d.bal -= p; pool -= p; }
     for (const d of debts){ if (d.bal<=0.005 && d.paidOff===null){ d.bal=0; d.paidOff=month; } }
+    for (const d of debts){ if (d.promoUntil && d.leftAtPromoEnd===undefined && mkey(new Date(start.getFullYear(), start.getMonth()+month, 1)) === d.promoUntil) d.leftAtPromoEnd = Math.max(0, d.bal); }
     curve.push(debts.reduce((t,d)=>t+d.bal,0));
   }
   const when = m => { const x = new Date(start.getFullYear(), start.getMonth()+m, 1); return x.toLocaleDateString("en-US",{month:"short",year:"numeric"}); };
@@ -351,8 +357,9 @@ function vDebt(){
   </section>
   <section class="sheet"><h2>Payoff order</h2>
     <div class="scroll"><table class="tbl"><thead><tr><th>Account</th><th>Balance</th><th>APR</th><th>Paid off</th></tr></thead><tbody>
-    ${order.map(d=>`<tr class="${d.id===firstTarget?"focus":""}"><td>${esc(d.name)}${meta[d.id]?.note?`<br><span class="pill brass">${esc(meta[d.id].note)}</span>`:""}</td><td>${money(meta[d.id]?.balance,false)}</td><td>${(+meta[d.id]?.apr||0).toFixed(2)}%</td><td>${d.paidOff?r.when(d.paidOff):"—"}</td></tr>`).join("")}
+    ${order.map(d=>`<tr class="${d.id===firstTarget?"focus":""}"><td>${esc(d.name)}${meta[d.id]?.note?`<br><span class="pill brass">${esc(meta[d.id].note)}</span>`:""}</td><td>${money(meta[d.id]?.balance,false)}</td><td>${(+meta[d.id]?.apr||0).toFixed(2)}%${meta[d.id]?.promoUntil && meta[d.id]?.aprAfter!=="" && meta[d.id]?.aprAfter!=null ? `<br><small class="sub">${(+meta[d.id].aprAfter).toFixed(2)}% after ${shortMonth(meta[d.id].promoUntil)}</small>`:""}</td><td>${d.paidOff?r.when(d.paidOff):"—"}</td></tr>`).join("")}
     </tbody></table></div>
+    ${order.filter(d=>d.leftAtPromoEnd>0.5).map(d=>`<p class="promo-warn">Heads up: about <b class="num">${money(d.leftAtPromoEnd,false)}</b> will still be owed on ${esc(d.name)} when its promo rate ends in ${shortMonth(meta[d.id].promoUntil)}. Paying that much extra before then avoids the higher rate.</p>`).join("")}
     <div class="sub">Each account keeps its plan payment. The extra goes to the top account; when one is paid off, its payment rolls to the next. Update balances in Setup after each statement.</div>
   </section>`;
 }
@@ -414,7 +421,8 @@ function vSetup(){
     ${S.debts.map((d,i)=>`<div class="editrow">
       <div class="seg"><input aria-label="Name" data-list="debts" data-i="${i}" data-f="name" value="${esc(d.name)}"><button class="x" data-act="del" data-list="debts" data-i="${i}" aria-label="Remove">×</button></div>
       <div class="grid3"><div class="field"><label class="label">Balance</label><input class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="balance" data-t="n" value="${d.balance}"></div><div class="field"><label class="label">APR %</label><input class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="apr" data-t="n" value="${d.apr}"></div><div class="field"><label class="label">Min payment</label><input class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="payment" data-t="n" value="${d.payment}"></div></div>
-      <input aria-label="Note" placeholder="Note (promo end date, limit…)" data-list="debts" data-i="${i}" data-f="note" value="${esc(d.note||"")}"></div>`).join("")}
+      <div class="grid2"><div class="field"><label class="label" for="pe-${i}">Promo rate ends (optional)</label><input id="pe-${i}" type="month" data-list="debts" data-i="${i}" data-f="promoUntil" value="${esc(d.promoUntil||"")}"></div><div class="field"><label class="label" for="pa-${i}">APR after promo %</label><input id="pa-${i}" class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="aprAfter" value="${d.aprAfter??""}" placeholder="e.g. 29.99"></div></div>
+      <input aria-label="Note" placeholder="Note (limit, status…)" data-list="debts" data-i="${i}" data-f="note" value="${esc(d.note||"")}"></div>`).join("")}
     <button class="ghost tiny" data-act="add" data-list="debts">Add card or loan</button>
   </section>
   <section class="sheet"><h2>Backup &amp; reset</h2>
