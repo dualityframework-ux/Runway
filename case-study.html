@@ -108,11 +108,11 @@ li{margin-bottom:6px}
 
   <h2>What I would build next</h2>
   <ol>
-        <li>Irregular bills: quarterly, annual and one-off.</li>
-    <li>A CSV import from a bank statement to fill the spending log.</li>
+            <li>A CSV import from a bank statement to fill the spending log.</li>
   </ol>
 
   <p><b>Update:</b> promo-rate end dates are built. A card can carry a promo rate, the month it ends and the APR after. The simulation switches rates on schedule, re-ranks the payoff order when the rate jumps, and warns how much will still be owed when the promo ends. On the sample, a 0% store card would still owe about $580 when its rate jumps to 29.99%.</p>
+  <p><b>Update:</b> bills can now repeat every 3, 6 or 12 months, or happen once. They land in the forecast and the monthly checklist only in the months they are due.</p>
 
   <div class="callout"><p><b>Built with</b> plain JavaScript in one HTML file, no frameworks and no build step. Charts are hand-drawn SVG. State is a single JSON object in browser storage.</p></div>
 

@@ -153,6 +153,17 @@ const short = dt => dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})
 const monthName = k => { const [y,m]=k.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"}); };
 const shiftMonth = (k, n) => { const [y,m]=k.split("-").map(Number); return mkey(new Date(y, m-1+n, 1)); };
 const todayKey = () => mkey(new Date());
+// Is bill b due in month key k ("YYYY-MM")? Monthly by default; quarterly, yearly and one-time count from b.start.
+const FREQ = {monthly:"Monthly", quarterly:"Every 3 months", semiannual:"Every 6 months", yearly:"Yearly", once:"One time"};
+const STEP = {quarterly:3, semiannual:6, yearly:12};
+function dueIn(b, k){
+  const f = b.freq || "monthly"; if (f === "monthly") return true;
+  if (!b.start) return false;
+  if (f === "once") return k === b.start;
+  const [y1,m1] = b.start.split("-").map(Number), [y2,m2] = k.split("-").map(Number);
+  const diff = (y2-y1)*12 + (m2-m1);
+  return diff >= 0 && diff % STEP[f] === 0;
+}
 const shortMonth = k => { const [y,m]=k.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-US",{month:"short",year:"numeric"}); };
 
 function normalize(s){
@@ -171,7 +182,8 @@ function sampleState(){
   const bills = [
     {id:uid(),name:"Rent",day:1,amount:1450},{id:uid(),name:"Car payment",day:12,amount:340},
     {id:uid(),name:"Phone",day:15,amount:65},{id:uid(),name:"Internet",day:18,amount:70},
-    {id:uid(),name:"Car insurance",day:22,amount:120},{id:uid(),name:"Streaming",day:27,amount:25}];
+    {id:uid(),name:"Car insurance",day:22,amount:120},{id:uid(),name:"Streaming",day:27,amount:25},
+    {id:uid(),name:"Water & sewer",day:10,amount:85,freq:"quarterly",start:mkey(new Date(t.getFullYear(),t.getMonth()+1,1))},{id:uid(),name:"Car registration",day:15,amount:96,freq:"yearly",start:mkey(new Date(t.getFullYear(),t.getMonth()+2,1))}];
   const paid = {[k]: bills.filter(b=>b.day < t.getDate()).map(b=>b.id)};
   const log = [
     {cat:"Groceries",amount:86.42,d:-2,note:"Weekly shop"},{cat:"Gas",amount:48.10,d:-3,note:""},
@@ -198,6 +210,7 @@ function project(days=62){
   while (cur <= end){
     const y = cur.getFullYear(), m = cur.getMonth(), k = mkey(cur);
     for (const b of S.bills){
+      if (!dueIn(b, k)) continue;
       const dt = new Date(y, m, Math.min(+b.day||1, dim(y,m)), 12);
       if (dt > start && dt <= end && !(S.paid[k]||[]).includes(b.id)) ev.push({date:dt, name:b.name, amt:-(+b.amount||0), kind:"bill"});
     }
@@ -321,7 +334,7 @@ function vBills(){
   const k = billMonth || mkey(D(S.asOf)); billMonth = k;
   const done = S.paid[k]||[];
   const [y,m] = k.split("-").map(Number);
-  const list = [...S.bills].sort((a,b)=>a.day-b.day);
+  const list = S.bills.filter(b => dueIn(b, k)).sort((a,b)=>a.day-b.day);
   const total = list.reduce((t,b)=>t+(+b.amount||0),0), paidAmt = list.filter(b=>done.includes(b.id)).reduce((t,b)=>t+(+b.amount||0),0);
   return `<section class="sheet">
     <div class="seg"><button class="ghost tiny" data-act="bm" data-n="-1" aria-label="Previous month">‹</button><h2>${monthName(k)}</h2><button class="ghost tiny" data-act="bm" data-n="1" aria-label="Next month">›</button></div>
@@ -329,8 +342,8 @@ function vBills(){
     <div class="bar"><i style="width:${total?paidAmt/total*100:0}%"></i></div>
     <div class="rows">${list.map(b=>{ const on = done.includes(b.id); const dt = new Date(y,m-1,Math.min(b.day,dim(y,m-1)));
       return `<label class="check ${on?"done":""}"><input type="checkbox" data-act="paid" data-id="${b.id}" ${on?"checked":""}>
-      <span class="n">${esc(b.name)}<small style="display:block;color:var(--muted);font-size:.75rem">due ${short(dt)}</small></span>
-      <span class="num">${money(b.amount,false)}</span></label>`; }).join("") || '<div class="empty">No bills yet. Add them in Setup.</div>'}</div>
+      <span class="n">${esc(b.name)}<small style="display:block;color:var(--muted);font-size:.75rem">due ${short(dt)}${(b.freq||"monthly")!=="monthly"?` · ${FREQ[b.freq].toLowerCase()}`:""}</small></span>
+      <span class="num">${money(b.amount,false)}</span></label>`; }).join("") || (S.bills.length ? '<div class="empty">No bills due this month.</div>' : '<div class="empty">No bills yet. Add them in Setup.</div>')}</div>
     <div class="sub">Checked bills drop out of the cash flow projection for that month.</div>
   </section>`;
 }
@@ -410,7 +423,8 @@ function vSetup(){
     <button class="ghost tiny" data-act="add" data-list="pay.oneOffs">Add one-time income</button>
   </section>
   <section class="sheet"><h2>Bills</h2><div class="label" style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px"><span>Name</span><span>Due day</span><span>Amount</span></div>
-    ${S.bills.map((b,i)=>`<div class="grid3 editrow"><input aria-label="Bill name" data-list="bills" data-i="${i}" data-f="name" value="${esc(b.name)}"><input aria-label="Due day" class="num" inputmode="numeric" data-list="bills" data-i="${i}" data-f="day" data-t="n" value="${b.day}"><div class="seg"><input aria-label="Amount" class="num" inputmode="decimal" data-list="bills" data-i="${i}" data-f="amount" data-t="n" value="${b.amount}"><button class="x" data-act="del" data-list="bills" data-i="${i}" aria-label="Remove">×</button></div></div>`).join("")}
+    ${S.bills.map((b,i)=>{ const f = b.freq||"monthly"; return `<div class="editrow"><div class="grid3"><input aria-label="Bill name" data-list="bills" data-i="${i}" data-f="name" value="${esc(b.name)}"><input aria-label="Due day" class="num" inputmode="numeric" data-list="bills" data-i="${i}" data-f="day" data-t="n" value="${b.day}"><div class="seg"><input aria-label="Amount" class="num" inputmode="decimal" data-list="bills" data-i="${i}" data-f="amount" data-t="n" value="${b.amount}"><button class="x" data-act="del" data-list="bills" data-i="${i}" aria-label="Remove">×</button></div></div>
+      <div class="grid2"><select aria-label="How often" data-list="bills" data-i="${i}" data-f="freq">${Object.entries(FREQ).map(([v,l])=>`<option value="${v}" ${f===v?"selected":""}>${l}</option>`).join("")}</select>${f==="monthly"?"":`<input aria-label="${f==="once"?"Month due":"First month due"}" type="month" data-list="bills" data-i="${i}" data-f="start" value="${esc(b.start||"")}">`}</div></div>`; }).join("")}
     <button class="ghost tiny" data-act="add" data-list="bills">Add bill</button>
   </section>
   <section class="sheet"><h2>Monthly spending budget</h2>
@@ -462,7 +476,7 @@ document.addEventListener("change", e=>{
   const t = e.target; if (!S) return;
   const val = t.dataset.t==="n" ? numIn(t.value) : t.value;
   if (t.dataset.k){ setPath(t.dataset.k, val); edited(); return; }
-  if (t.dataset.list){ getPath(t.dataset.list)[+t.dataset.i][t.dataset.f] = val; edited(); return; }
+  if (t.dataset.list){ const item = getPath(t.dataset.list)[+t.dataset.i]; item[t.dataset.f] = val; if (t.dataset.f==="freq" && val!=="monthly" && !item.start) item.start = mkey(D(S.asOf)); edited(); return; }
   if (t.dataset.act==="paid"){ const k = billMonth; const arr = new Set(S.paid[k]||[]); t.checked?arr.add(t.dataset.id):arr.delete(t.dataset.id); S.paid[k]=[...arr]; save(); render(); return; }
   if (t.dataset.act==="extra"){ S.extra = numIn(t.value); save(); render(); return; }
   if (t.dataset.act==="method"){ S.method = t.value; save(); render(); return; }
@@ -479,7 +493,7 @@ document.addEventListener("click", e=>{
   if (a==="unlog"){ S.log = S.log.filter(x=>x.id!==b.dataset.id); save(); render(); }
   if (a==="del"){ getPath(b.dataset.list).splice(+b.dataset.i,1); edited(); }
   if (a==="add"){ const L=b.dataset.list, list=getPath(L);
-    if (L==="bills") list.push({id:uid(),name:"New bill",day:1,amount:0});
+    if (L==="bills") list.push({id:uid(),name:"New bill",day:1,amount:0,freq:"monthly"});
     if (L==="budget") list.push({id:uid(),name:"New category",monthly:0});
     if (L==="debts") list.push({id:uid(),name:"New card",balance:0,apr:0,payment:0,note:""});
     if (L==="pay.oneOffs") list.push({label:"Bonus",date:iso(new Date()),amount:0});
