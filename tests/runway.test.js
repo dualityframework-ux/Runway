@@ -12,7 +12,7 @@ const store = {};
 const sandbox = {
   window: { __RUNWAY_TEST__: true, addEventListener() {}, scrollY: 0, scrollTo() {} },
   document: { querySelector: () => el(), querySelectorAll: () => [], addEventListener() {}, createElement: () => el(), body: el() },
-  localStorage: { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } },
+  localStorage: { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
   location: { hash: "" }, navigator: {}, setTimeout, clearTimeout, console, Date, Math, JSON, Intl,
 };
 sandbox.window.document = sandbox.document;
@@ -233,4 +233,108 @@ test("paid-off debts no longer create separate cash events", () => {
   assert.strictEqual(R.project(30).unscheduledDebts.length, 0);
 });
 
+// ---------- backup validation and storage recovery ----------
+const backupState = () => ({asOf:"2026-11-01",checking:1000,floor:100,
+  pay:{amount:500,next:"2026-11-15",everyDays:14,oneOffs:[]},
+  bills:[{id:"rent",name:"Rent",day:10,amount:600}],budget:[],debts:[],paid:{},log:[]});
+test("legacy backups are validated without changing the caller", () => {
+  const source=backupState(); source.checking="123.45";
+  const candidate=R.validateBackup(source);
+  assert.strictEqual(candidate.schemaVersion,1);
+  assert.strictEqual(candidate.checking,123.45);
+  assert.strictEqual(source.checking,"123.45");
+  assert.ok(!("schemaVersion" in source));
+});
+test("invalid nested records and versions leave the current plan unchanged", () => {
+  R.set(backupState()); const before=JSON.stringify(R.get());
+  const invalid=[null,[],{bills:[]},
+    {...backupState(),pay:[]},{...backupState(),pay:null},
+    {...backupState(),debts:{}},{...backupState(),log:null},
+    {...backupState(),paid:{"2026-11":{}}},{...backupState(),rules:{shop:5}},
+    {...backupState(),schemaVersion:2},
+    {...backupState(),bills:[{id:"a",day:32,amount:100}]},
+    {...backupState(),bills:[{id:"a",amount:1},{id:"a",amount:2}]},
+    {...backupState(),asOf:"2026-02-31"},
+    {...backupState(),checking:Infinity}];
+  for (const candidate of invalid){
+    assert.throws(()=>R.restoreBackup(JSON.stringify(candidate)));
+    assert.strictEqual(JSON.stringify(R.get()),before);
+  }
+  assert.throws(()=>R.validateBackup({...backupState(),checking:Infinity}));
+  const overflow=JSON.stringify({...backupState(),debts:[{id:"a",balance:10,aprAfter:0}]}).replace('"aprAfter":0','"aprAfter":1e999');
+  assert.throws(()=>R.restoreBackup(overflow));
+});
+test("restoring saves immediately and retains the previous bytes", () => {
+  R.set(backupState()); const previous=JSON.stringify(R.get()); store["runway.v1"]=previous;
+  const next={...backupState(),checking:700};
+  R.restoreBackup(JSON.stringify(next));
+  assert.strictEqual(R.get().checking,700);
+  assert.strictEqual(JSON.parse(store["runway.v1"]).checking,700);
+  assert.strictEqual(store["runway.v1.previous"],previous);
+});
+test("quota failure leaves the current plan and stored document intact", () => {
+  R.set(backupState()); store["runway.v1"]=JSON.stringify(R.get());
+  const before=store["runway.v1"], setter=sandbox.localStorage.setItem;
+  sandbox.localStorage.setItem=(key,value)=>{if(key==="runway.v1") throw new Error("quota"); setter(key,value);};
+  try { assert.throws(()=>R.restoreBackup(JSON.stringify({...backupState(),checking:4})),/Could not save/); }
+  finally {sandbox.localStorage.setItem=setter;}
+  assert.strictEqual(JSON.stringify(R.get()),before);
+  assert.strictEqual(store["runway.v1"],before);
+});
+test("failed previous-save backup prevents replacement of the primary document", () => {
+  const before=store["runway.v1"], setter=sandbox.localStorage.setItem;
+  sandbox.localStorage.setItem=(key,value)=>{if(key.endsWith(".previous")) throw new Error("quota"); setter(key,value);};
+  try {assert.throws(()=>R.restoreBackup(JSON.stringify({...backupState(),checking:4})));}
+  finally {sandbox.localStorage.setItem=setter;}
+  assert.strictEqual(store["runway.v1"],before);
+});
+test("damaged stored JSON is preserved until an explicit valid restore", () => {
+  store["runway.v1"]="{broken";
+  assert.strictEqual(R.load(),null);
+  R.set(backupState()); assert.strictEqual(R.flush(),false);
+  assert.strictEqual(store["runway.v1"],"{broken");
+  R.restoreBackup(JSON.stringify(backupState()));
+  assert.strictEqual(store["runway.v1.previous"],"{broken");
+  assert.strictEqual(JSON.parse(store["runway.v1"]).checking,1000);
+});
+test("invalid JSON does not touch either storage or the current plan", () => {
+  const before=JSON.stringify(R.get()), persisted=store["runway.v1"];
+  assert.throws(()=>R.restoreBackup("{broken"),/not valid JSON/);
+  assert.strictEqual(JSON.stringify(R.get()),before);
+  assert.strictEqual(store["runway.v1"],persisted);
+});
+
+test("explicit erase also clears the previous-save copy", () => {
+  R.erasePlan();
+  assert.strictEqual(store["runway.v1.previous"],undefined);
+  assert.strictEqual(JSON.parse(store["runway.v1"]).bills.length,0);
+  assert.strictEqual(R.get().checking,0);
+});
+test("failed erase reports failure and does not replace the in-memory plan", () => {
+  R.set(backupState()); const before=JSON.stringify(R.get());
+  const remove=sandbox.localStorage.removeItem;
+  sandbox.localStorage.removeItem=()=>{throw new Error("blocked");};
+  try {assert.throws(()=>R.erasePlan(),/Could not erase/);}
+  finally {sandbox.localStorage.removeItem=remove;}
+  assert.strictEqual(JSON.stringify(R.get()),before);
+});
+test("an unreadable initial document cannot be overwritten when storage becomes available", () => {
+  store["runway.v1"]=JSON.stringify(R.normalize(backupState()));
+  const previous=store["runway.v1"], get=sandbox.localStorage.getItem;
+  sandbox.localStorage.getItem=()=>{throw new Error("read blocked");};
+  try {assert.strictEqual(R.load(),null);} finally {sandbox.localStorage.getItem=get;}
+  R.set({...backupState(),checking:25});
+  assert.strictEqual(R.flush(),false);
+  assert.strictEqual(store["runway.v1"],previous);
+  R.restoreBackup(JSON.stringify(backupState()));
+  assert.strictEqual(R.flush(),true);
+});
+test("legacy signed values used for credits and overdraft floors are preserved", () => {
+  const source=backupState(); source.floor=-100; source.bills[0].amount=-25;
+  source.debts=[{id:"credit",name:"Card credit",balance:-50,apr:0,payment:0}];
+  const candidate=R.validateBackup(source);
+  assert.strictEqual(candidate.floor,-100);
+  assert.strictEqual(candidate.bills[0].amount,-25);
+  assert.strictEqual(candidate.debts[0].balance,-50);
+});
 console.log(`all ${passed} Runway tests passed`);
