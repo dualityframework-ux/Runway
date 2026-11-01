@@ -172,4 +172,65 @@ test("sample data boots into a usable plan", () => {
   assert.ok(R.get().sample === true);
 });
 
+// ---------- cash forecast includes debt commitments ----------
+const cashDebtState = (debt, bills = []) => ({ asOf: "2026-11-01", checking: 1000, floor: 0,
+  pay: { amount: 0, next: "2026-11-01", everyDays: 14, oneOffs: [] },
+  bills, budget: [], debts: [{ id: "card", name: "Card", balance: 1000, apr: 0, payment: 100, ...debt }], paid: {}, log: [] });
+
+test("separately scheduled debt reduces the cash forecast", () => {
+  R.set(cashDebtState({dueDay: 15}));
+  const p = R.project(30);
+  assert.strictEqual(p.end, 900);
+  assert.strictEqual(p.unscheduledDebts.length, 0);
+  assert.ok(p.rows.some(r=>r.name === "Card payment" && r.amt === -100));
+});
+test("linking an existing bill counts the payment once", () => {
+  R.set(cashDebtState({billId: "bill"}, [{id:"bill",name:"Card bill",day:15,amount:100}]));
+  assert.strictEqual(R.project(30).end, 900);
+  assert.strictEqual(R.project(30).rows.length, 1);
+});
+test("linked payment reserves at least the debt minimum", () => {
+  R.set(cashDebtState({billId:"bill"}, [{id:"bill",name:"Card bill",day:15,amount:50}]));
+  assert.strictEqual(R.project(30).end, 900);
+});
+test("several debts sharing one bill reserve the sum of minimums once", () => {
+  const state = cashDebtState({billId:"bill"}, [{id:"bill",name:"Combined",day:15,amount:100}]);
+  state.debts.push({id:"other",name:"Other",balance:500,payment:40,billId:"bill"});
+  R.set(state);
+  assert.strictEqual(R.project(30).end, 860);
+  assert.strictEqual(R.project(30).rows.length, 1);
+});
+test("paid debt payment drops out of that month's projection", () => {
+  const state = cashDebtState({dueDay:15}); state.paid = {"2026-11":["debt:card"]};
+  R.set(state);
+  assert.strictEqual(R.project(30).end, 1000);
+});
+test("debt due on day 31 clamps to February month-end", () => {
+  const state = cashDebtState({dueDay:31}); state.asOf = "2027-02-01";
+  R.set(state);
+  assert.strictEqual(R.project(27).rows[0].date.getDate(), 28);
+});
+test("legacy debts with no date withhold the available-cash estimate", () => {
+  R.set(cashDebtState({}));
+  assert.strictEqual(R.project(30).unscheduledDebts.length, 1);
+  assert.ok(R.vPlan().includes("Forecast incomplete"));
+  assert.ok(R.vPlan().includes("debt payments still need scheduling"));
+});
+test("missing linked bill cannot silently fall back to a different date", () => {
+  R.set(cashDebtState({billId:"deleted",dueDay:15}));
+  assert.strictEqual(R.project(30).unscheduledDebts.length, 1);
+  assert.strictEqual(R.project(30).rows.length, 0);
+});
+test("invalid date or zero payment leaves active debts unresolved", () => {
+  for (const debt of [{dueDay:0},{dueDay:32},{dueDay:1.5},{dueDay:15,payment:0}]){
+    R.set(cashDebtState(debt));
+    assert.strictEqual(R.project(30).unscheduledDebts.length, 1);
+  }
+});
+test("paid-off debts no longer create separate cash events", () => {
+  R.set(cashDebtState({balance:0,dueDay:15}));
+  assert.strictEqual(R.project(30).rows.length, 0);
+  assert.strictEqual(R.project(30).unscheduledDebts.length, 0);
+});
+
 console.log(`all ${passed} Runway tests passed`);
