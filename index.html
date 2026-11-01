@@ -177,7 +177,7 @@ function normalize(s){
   s.asOf ||= iso(new Date()); s.checking = +s.checking||0; s.savings = +s.savings||0;
   s.floor = s.floor==null?1000:+s.floor; s.extra = +s.extra||0; s.method ||= "avalanche";
   s.pay ||= {amount:0,next:iso(new Date()),everyDays:14,oneOffs:[]}; s.pay.oneOffs ||= [];
-  s.bills ||= []; s.budget ||= []; s.debts ||= []; s.paid ||= {}; s.log ||= [];
+  s.bills ||= []; s.budget ||= []; s.debts ||= []; s.paid ||= {}; s.log ||= []; s.rules ||= {};
   s.sample = !!s.sample;
   return s;
 }
@@ -326,8 +326,11 @@ const MERCHANT_RULES = [
   ["dining", /restaurant|grill|pizza|mcdonald|burger|wendy|taco|chipotle|subway|dunkin|starbucks|coffee|cafe|diner|doordash|uber ?eats|grubhub|kitchen|bar\b/i],
 ];
 const GROUP_NAMES = { groceries:/grocer|food(?! out)/i, gas:/gas|fuel/i, dining:/dining|eat|restaurant|takeout|food out/i };
+// "MARKET BASKET 42" and "Market Basket #17" share one key: letters only, first two words.
+const merchantKey = d => String(d).toLowerCase().replace(/[^a-z\s]/g," ").replace(/\s+/g," ").trim().split(" ").slice(0,2).join(" ");
 function categorize(desc){
   const cats = S.budget.map(b=>b.name);
+  const learned = S.rules[merchantKey(desc)]; if (learned && (cats.includes(learned) || learned==="Other")) return learned;
   for (const [group, re] of MERCHANT_RULES){
     if (!re.test(desc)) continue;
     const hit = cats.find(c => GROUP_NAMES[group].test(c)); if (hit) return hit;
@@ -357,7 +360,7 @@ function buildImport(text){
     if (x.a > 0) { deposits++; continue; }
     const amount = Math.round(-x.a*100)/100, key = `${x.date}|${amount.toFixed(2)}|${x.note}`;
     if (seen.has(key)) { dupes++; continue; }
-    seen.add(key); out.push({ date:x.date, note:x.note, amount, cat:categorize(x.note), on:true });
+    seen.add(key); const cat = categorize(x.note); out.push({ date:x.date, note:x.note, amount, cat, guess:cat, on:true });
   }
   return { rows: out, deposits, dupes };
 }
@@ -520,6 +523,7 @@ function vSetup(){
   <section class="sheet"><h2>Backup &amp; reset</h2>
     <p class="sub">Your numbers are saved in this browser only. Copy a backup to move them to another phone or keep them safe.</p>
     <div class="btnrow"><button class="ghost tiny" data-act="copy">Copy backup</button><button class="ghost tiny" data-act="sample">Load sample data</button><button class="danger tiny ${armed==="reset"?"armed":""}" data-act="reset">${armed==="reset"?"Tap again to erase":"Erase everything"}</button></div>
+    ${Object.keys(S.rules).length ? `<div class="field"><span class="label">Learned merchant categories</span><div class="rows">${Object.entries(S.rules).sort().map(([m,c])=>`<div class="row" style="grid-template-columns:1fr auto auto"><span class="n">${esc(m)}</span><span class="sub">${esc(c)}</span><button class="x" data-act="unrule" data-m="${esc(m)}" aria-label="Forget ${esc(m)}">×</button></div>`).join("")}</div></div>` : ""}
     <div class="field"><label class="label" for="restore">Restore from backup</label><textarea id="restore" placeholder="Paste a backup here"></textarea></div>
     <div><button class="tiny" data-act="restore">Restore</button></div>
   </section>
@@ -566,7 +570,7 @@ document.addEventListener("change", e=>{
   if (t.dataset.act==="extra"){ S.extra = numIn(t.value); save(); render(); return; }
   if (t.dataset.act==="method"){ S.method = t.value; save(); render(); return; }
   if (t.dataset.act==="imp-on"){ importRows[+t.dataset.i].on = t.checked; render(); return; }
-  if (t.dataset.act==="imp-cat"){ importRows[+t.dataset.i].cat = t.value; return; }
+  if (t.dataset.act==="imp-cat"){ const key = merchantKey(importRows[+t.dataset.i].note); importRows.forEach(r=>{ if (merchantKey(r.note)===key) r.cat = t.value; }); render(); return; }
   if (t.id==="impFile"){ const f=t.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>previewImport(rd.result); rd.readAsText(f); t.value=""; return; }
 });
 document.addEventListener("click", e=>{
@@ -579,10 +583,11 @@ document.addEventListener("click", e=>{
   if (a==="log"){ const amt = numIn($("#sa").value); if(!(amt>0)){ $("#sa").focus(); toast("Enter an amount"); return; }
     const date = $("#sd").value||iso(new Date()); S.log.push({id:uid(), date, cat:$("#sc").value, amount:Math.round(amt*100)/100, note:$("#sn").value.trim()}); spendMonth = date.slice(0,7); save(); render(); toast("Logged "+money(amt)); }
   if (a==="unlog"){ S.log = S.log.filter(x=>x.id!==b.dataset.id); save(); render(); }
+  if (a==="unrule"){ delete S.rules[b.dataset.m]; save(); render(); }
   if (a==="imp-paste"){ const bx=$("#impPasteBox"); bx.hidden=!bx.hidden; if(!bx.hidden) $("#impPaste").focus(); }
   if (a==="imp-paste-go"){ previewImport($("#impPaste").value); }
   if (a==="imp-cancel"){ importRows=null; importMsg=""; render(); }
-  if (a==="imp-go"){ const pick = (importRows||[]).filter(r=>r.on); pick.forEach(r=>S.log.push({id:uid(), date:r.date, cat:r.cat, amount:r.amount, note:r.note}));
+  if (a==="imp-go"){ const pick = (importRows||[]).filter(r=>r.on); pick.forEach(r=>{ S.log.push({id:uid(), date:r.date, cat:r.cat, amount:r.amount, note:r.note}); if (r.cat !== r.guess && merchantKey(r.note)) S.rules[merchantKey(r.note)] = r.cat; });
     if (pick.length){ spendMonth = pick.map(r=>r.date).sort().pop().slice(0,7); }
     importRows=null; importMsg=""; save(); render(); toast(`Imported ${pick.length} purchase${pick.length===1?"":"s"}`); }
   if (a==="del"){ getPath(b.dataset.list).splice(+b.dataset.i,1); edited(); }
