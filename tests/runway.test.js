@@ -51,6 +51,42 @@ test("a bill checked off as paid drops out of that month", () => {
   assert.ok(!R.project(20).rows.some(r => r.name === "Rent"));
 });
 
+test("an unpaid bill due earlier this month still counts, right away", () => {
+  R.set({ asOf: "2026-11-15", checking: 1000, floor: 0, pay: { amount: 0, next: "2026-11-15", everyDays: 14, oneOffs: [] },
+    bills: [{ id: "a", name: "Rent", day: 10, amount: 600 }, { id: "b", name: "Phone", day: 15, amount: 50 }], budget: [], debts: [], paid: {}, log: [] });
+  const p = R.project(10);
+  assert.deepStrictEqual(plain(p.rows.map(r => [r.name, r.after, r.overdue])), [["Rent", 400, true], ["Phone", 350, true]]);
+  assert.strictEqual(p.series[0].bal, 350);
+  assert.strictEqual(p.low.bal, 350);
+  assert.match(R.vPlan(), /not checked off/);
+});
+
+test("checked-off bills and earlier months stay out of the forecast", () => {
+  R.set({ asOf: "2026-12-02", checking: 1000, floor: 0, pay: { amount: 0, next: "2026-12-02", everyDays: 14, oneOffs: [] },
+    bills: [{ id: "a", name: "Rent", day: 1, amount: 600 }, { id: "b", name: "Phone", day: 25, amount: 50 }],
+    budget: [], debts: [], paid: { "2026-12": ["a"] }, log: [] });
+  const p = R.project(25);
+  assert.deepStrictEqual(plain(p.rows.map(r => r.name)), ["Phone"]);
+  assert.ok(!p.rows.some(r => r.overdue), "November's unchecked phone bill is not carried into December");
+  assert.strictEqual(p.series[0].bal, 1000);
+});
+
+test("an unpaid debt minimum due earlier this month counts too", () => {
+  R.set({ asOf: "2026-11-25", checking: 1000, floor: 0, pay: { amount: 0, next: "2026-11-25", everyDays: 14, oneOffs: [] },
+    bills: [], budget: [], paid: {}, log: [], debts: [{ id: "v", name: "Visa", balance: 500, apr: 20, payment: 40, dueDay: 20 }] });
+  assert.strictEqual(R.project(5).series[0].bal, 960);
+  R.set({ ...plain(R.get()), paid: { "2026-11": ["debt:v"] } });
+  assert.strictEqual(R.project(5).series[0].bal, 1000);
+});
+
+test("the sample checks off bills and debt payments due before today", () => {
+  const s = R.sampleState(), today = new Date().getDate(), k = Object.keys(s.paid)[0];
+  R.set(s);
+  const before = R.cashSchedule().bills.filter(b => R.dueIn(b, k) && b.day < today).map(b => b.id).sort();
+  assert.deepStrictEqual(plain(s.paid[k]).sort(), plain(before));
+  assert.ok(!R.project(62).rows.some(r => r.overdue && r.date.getDate() < today));
+});
+
 test("bills on the 31st land on the last day of short months", () => {
   R.set({ asOf: "2027-02-01", checking: 1000, floor: 0, pay: { amount: 0, next: "2027-02-01", everyDays: 14, oneOffs: [] },
     bills: [{ id: "a", name: "Card", day: 31, amount: 100 }], budget: [], debts: [], paid: {}, log: [] });

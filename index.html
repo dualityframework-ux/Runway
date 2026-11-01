@@ -271,7 +271,10 @@ function sampleState(){
     {id:uid(),name:"Phone",day:15,amount:65},{id:uid(),name:"Internet",day:18,amount:70},
     {id:uid(),name:"Car insurance",day:22,amount:120},{id:uid(),name:"Streaming",day:27,amount:25},
     {id:uid(),name:"Water & sewer",day:10,amount:85,freq:"quarterly",start:mkey(new Date(t.getFullYear(),t.getMonth()+1,1))},{id:uid(),name:"Car registration",day:15,amount:96,freq:"yearly",start:mkey(new Date(t.getFullYear(),t.getMonth()+2,1))}];
-  const paid = {[k]: bills.filter(b=>b.day < t.getDate()).map(b=>b.id)};
+  const debts = [{id:uid(),name:"Visa",balance:4200,apr:24.99,payment:120,dueDay:20,note:""},
+           {id:uid(),name:"Store card",balance:900,apr:0,payment:40,dueDay:23,promoUntil:mkey(addDays(t,240)),aprAfter:29.99,note:""},
+           {id:uid(),name:"Student loan",balance:11800,apr:5.5,payment:150,dueDay:25,note:"Fixed rate"}];
+  const paid = {[k]: [...bills.filter(b=>b.day < t.getDate()).map(b=>b.id), ...debts.filter(d=>d.dueDay < t.getDate()).map(d=>"debt:"+d.id)]};
   const log = [
     {cat:"Groceries",amount:86.42,d:-2,note:"Weekly shop"},{cat:"Gas",amount:48.10,d:-3,note:""},
     {cat:"Dining out",amount:32.75,d:-5,note:"Pizza night"},{cat:"Groceries",amount:64.18,d:-9,note:""},
@@ -283,9 +286,7 @@ function sampleState(){
     pay:{amount:1850,next:iso(addDays(t,5)),everyDays:14,oneOffs:[]},
     bills, paid, log,
     budget:[{id:uid(),name:"Groceries",monthly:450},{id:uid(),name:"Gas",monthly:180},{id:uid(),name:"Dining out",monthly:150},{id:uid(),name:"Other",monthly:120}],
-    debts:[{id:uid(),name:"Visa",balance:4200,apr:24.99,payment:120,dueDay:20,note:""},
-           {id:uid(),name:"Store card",balance:900,apr:0,payment:40,dueDay:23,promoUntil:mkey(addDays(t,240)),aprAfter:29.99,note:""},
-           {id:uid(),name:"Student loan",balance:11800,apr:5.5,payment:150,dueDay:25,note:"Fixed rate"}]
+    debts
   });
 }
 
@@ -319,7 +320,8 @@ function project(days=62){
     for (const b of schedule.bills){
       if (!dueIn(b, k)) continue;
       const dt = new Date(y, m, Math.min(+b.day||1, dim(y,m)), 12);
-      if (dt > start && dt <= end && !(S.paid[k]||[]).includes(b.id)) ev.push({date:dt, name:b.name, amt:-(+b.amount||0), kind:"bill"});
+      // A bill due earlier this month that is not checked off is still owed, so it counts now.
+      if (dt <= end && !(S.paid[k]||[]).includes(b.id)) ev.push({date:dt, name:b.name, amt:-(+b.amount||0), kind:"bill", overdue:dt<=start});
     }
     cur = new Date(y, m+1, 1, 12);
   }
@@ -331,7 +333,9 @@ function project(days=62){
   for (const o of S.pay.oneOffs){ if(!o.date) continue; const dt = D(o.date); if (dt>start && dt<=end) ev.push({date:dt, name:o.label||"Paycheck", amt:+o.amount||0, kind:"pay"}); }
   ev.sort((a,b)=>a.date-b.date || b.amt-a.amt);
   const daily = S.budget.reduce((t,b)=>t+(+b.monthly||0),0)*12/365;
-  const series = []; let bal = S.checking, i = 0, low = {bal:S.checking,date:start}, rows = [];
+  const series = []; let bal = S.checking, i = 0, rows = [];
+  while (i < ev.length && ev[i].date <= start){ bal += ev[i].amt; rows.push({...ev[i], after:bal}); i++; }
+  let low = {bal, date:start};
   series.push({date:start, bal});
   for (let d = 1; d <= days; d++){
     const dt = addDays(start, d);
@@ -477,7 +481,7 @@ function vPlan(){
   const room = (p.low.bal - S.floor);
   const rows = p.rows.map(r=>`<div class="row ${r.kind==="pay"?"pay":""}">
       <span class="d">${short(r.date)}</span>
-      <span class="n">${esc(r.name)}</span>
+      <span class="n">${esc(r.name)}${r.overdue?'<small style="display:block;color:var(--muted);font-size:.75rem">not checked off</small>':""}</span>
       <span class="a ${r.amt>0?"pos":""}">${r.amt>0?"+":""}${money(r.amt)}<small>${money(r.after,false)}</small></span></div>`).join("");
   return `
   <section class="sheet">
