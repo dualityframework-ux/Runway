@@ -210,20 +210,40 @@ function sampleState(){
     pay:{amount:1850,next:iso(addDays(t,5)),everyDays:14,oneOffs:[]},
     bills, paid, log,
     budget:[{id:uid(),name:"Groceries",monthly:450},{id:uid(),name:"Gas",monthly:180},{id:uid(),name:"Dining out",monthly:150},{id:uid(),name:"Other",monthly:120}],
-    debts:[{id:uid(),name:"Visa",balance:4200,apr:24.99,payment:120,note:""},
-           {id:uid(),name:"Store card",balance:900,apr:0,payment:40,promoUntil:mkey(addDays(t,240)),aprAfter:29.99,note:""},
-           {id:uid(),name:"Student loan",balance:11800,apr:5.5,payment:150,note:"Fixed rate"}]
+    debts:[{id:uid(),name:"Visa",balance:4200,apr:24.99,payment:120,dueDay:20,note:""},
+           {id:uid(),name:"Store card",balance:900,apr:0,payment:40,dueDay:23,promoUntil:mkey(addDays(t,240)),aprAfter:29.99,note:""},
+           {id:uid(),name:"Student loan",balance:11800,apr:5.5,payment:150,dueDay:25,note:"Fixed rate"}]
   });
+}
+
+// Bills and debt minimums share one cash schedule. Linked payments are counted once.
+function cashSchedule(){
+  const bills = S.bills.map(b=>({...b})), unscheduled = [];
+  const linked = new Map();
+  for (const d of S.debts){
+    if (!(+d.balance > 0)) continue;
+    if (!(+d.payment > 0)) { unscheduled.push(d); continue; }
+    if (d.billId){
+      const bill = bills.find(b=>b.id===d.billId && (b.freq||"monthly")==="monthly");
+      if (!bill || !(+bill.day>=1 && +bill.day<=31 && Number.isInteger(+bill.day))){ unscheduled.push(d); continue; }
+      linked.set(bill.id, (linked.get(bill.id)||0) + +d.payment);
+    } else if (+d.dueDay>=1 && +d.dueDay<=31 && Number.isInteger(+d.dueDay)){
+      bills.push({id:"debt:"+d.id, name:d.name+" payment", day:+d.dueDay, amount:+d.payment, freq:"monthly"});
+    } else unscheduled.push(d);
+  }
+  for (const bill of bills) if (linked.has(bill.id)) bill.amount = Math.max(+bill.amount||0, linked.get(bill.id));
+  return {bills, unscheduled};
 }
 
 // ---------- projection ----------
 function project(days=62){
   const start = D(S.asOf), end = addDays(start, days);
   const ev = [];
+  const schedule = cashSchedule();
   let cur = new Date(start.getFullYear(), start.getMonth(), 1, 12);
   while (cur <= end){
     const y = cur.getFullYear(), m = cur.getMonth(), k = mkey(cur);
-    for (const b of S.bills){
+    for (const b of schedule.bills){
       if (!dueIn(b, k)) continue;
       const dt = new Date(y, m, Math.min(+b.day||1, dim(y,m)), 12);
       if (dt > start && dt <= end && !(S.paid[k]||[]).includes(b.id)) ev.push({date:dt, name:b.name, amt:-(+b.amount||0), kind:"bill"});
@@ -248,7 +268,7 @@ function project(days=62){
     if (bal < low.bal) low = {bal, date:dt};
   }
   const nextPay = ev.find(e=>e.kind==="pay");
-  return {rows, series, low, daily, nextPay, end:bal};
+  return {rows, series, low, daily, nextPay, end:bal, unscheduledDebts:schedule.unscheduled};
 }
 
 function lineChart(series, floor){
@@ -392,10 +412,11 @@ function vPlan(){
       <div><div class="label">Checking now</div><div class="big num">${money(S.checking)}</div><div class="sub">as of ${short(D(S.asOf))}</div></div>
       <div><div class="label">Low point · 60 days</div><div class="big num ${p.low.bal<S.floor?"neg":""}">${money(p.low.bal,false)}</div><div class="sub">${short(p.low.date)}</div></div>
       <div><div class="label">Next paycheck</div><div class="mid num">${p.nextPay?money(p.nextPay.amt,false):"—"}</div><div class="sub">${p.nextPay?short(p.nextPay.date):"Set pay in Setup"}</div></div>
-      <div><div class="label">Room above floor</div><div class="mid num ${room<0?"neg":"pos"}">${money(room,false)}</div><div class="sub">${room<0?"projected to dip below your floor":"safe to send to debt now"}</div></div>
+      <div><div class="label">Room above floor</div><div class="mid num ${room<0?"neg":"pos"}">${p.unscheduledDebts.length?"—":money(room,false)}</div><div class="sub">${p.unscheduledDebts.length?"debt payments still need scheduling":room<0?"projected to dip below your floor":"estimated room after scheduled payments"}</div></div>
     </div>
+    ${p.unscheduledDebts.length ? `<p role="status">Forecast incomplete: set a minimum payment and due day, or link a monthly bill, for ${p.unscheduledDebts.map(d=>esc(d.name)).join(", ")}. <a href="#setup">Finish payment setup</a>.</p>` : ""}
     ${lineChart(p.series, S.floor)}
-    <div class="sub">Includes everyday spending of about ${money(p.daily*30.4,false)}/mo spread evenly, plus bills not yet checked off. The red dot marks the low point.</div>
+    <div class="sub">Includes everyday spending of about ${money(p.daily*30.4,false)}/mo spread evenly, plus scheduled bills and debt minimums not yet checked off. Extra debt payments are not included. The red dot marks the low point.</div>
   </section>
   <section class="sheet">
     <div class="seg"><h2>Coming up</h2><button class="ghost tiny" data-act="update-bal">Update balance</button></div>
@@ -412,11 +433,11 @@ function vBills(){
   const k = billMonth || mkey(D(S.asOf)); billMonth = k;
   const done = S.paid[k]||[];
   const [y,m] = k.split("-").map(Number);
-  const list = S.bills.filter(b => dueIn(b, k)).sort((a,b)=>a.day-b.day);
+  const list = cashSchedule().bills.filter(b => dueIn(b, k)).sort((a,b)=>a.day-b.day);
   const total = list.reduce((t,b)=>t+(+b.amount||0),0), paidAmt = list.filter(b=>done.includes(b.id)).reduce((t,b)=>t+(+b.amount||0),0);
   return `<section class="sheet">
     <div class="seg"><button class="ghost tiny" data-act="bm" data-n="-1" aria-label="Previous month">‹</button><h2>${monthName(k)}</h2><button class="ghost tiny" data-act="bm" data-n="1" aria-label="Next month">›</button></div>
-    <div class="seg"><span class="sub">${done.length} of ${list.length} paid</span><span class="num">${money(paidAmt,false)} / ${money(total,false)}</span></div>
+    <div class="seg"><span class="sub">${list.filter(b=>done.includes(b.id)).length} of ${list.length} paid</span><span class="num">${money(paidAmt,false)} / ${money(total,false)}</span></div>
     <div class="bar"><i style="width:${total?paidAmt/total*100:0}%"></i></div>
     <div class="rows">${list.map(b=>{ const on = done.includes(b.id); const dt = new Date(y,m-1,Math.min(b.day,dim(y,m-1)));
       return `<label class="check ${on?"done":""}"><input type="checkbox" data-act="paid" data-id="${b.id}" ${on?"checked":""}>
@@ -521,10 +542,12 @@ function vSetup(){
     <button class="ghost tiny" data-act="add" data-list="budget">Add category</button>
   </section>
   <section class="sheet"><h2>Cards &amp; loans</h2>
+    <p class="sub">Schedule each minimum payment below, or link a monthly bill that already includes it. Linked payments count once, using at least the minimum payment. Use the Bills tab to mark payments paid.</p>
     ${S.debts.map((d,i)=>`<div class="editrow">
       <div class="seg"><input aria-label="Name" data-list="debts" data-i="${i}" data-f="name" value="${esc(d.name)}"><button class="x" data-act="del" data-list="debts" data-i="${i}" aria-label="Remove">×</button></div>
       <div class="grid3"><div class="field"><label class="label">Balance</label><input class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="balance" data-t="n" value="${d.balance}"></div><div class="field"><label class="label">APR %</label><input class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="apr" data-t="n" value="${d.apr}"></div><div class="field"><label class="label">Min payment</label><input class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="payment" data-t="n" value="${d.payment}"></div></div>
       <div class="grid2"><div class="field"><label class="label" for="pe-${i}">Promo rate ends (optional)</label><input id="pe-${i}" type="month" data-list="debts" data-i="${i}" data-f="promoUntil" value="${esc(d.promoUntil||"")}"></div><div class="field"><label class="label" for="pa-${i}">APR after promo %</label><input id="pa-${i}" class="num" inputmode="decimal" data-list="debts" data-i="${i}" data-f="aprAfter" value="${d.aprAfter??""}" placeholder="e.g. 29.99"></div></div>
+      <div class="grid2"><div class="field"><label class="label" for="db-${i}">Payment in cash forecast</label><select id="db-${i}" data-list="debts" data-i="${i}" data-f="billId"><option value="">Schedule separately</option>${d.billId && !S.bills.some(b=>b.id===d.billId && (b.freq||"monthly")==="monthly") ? `<option value="${esc(d.billId)}" selected>Missing monthly bill — choose another</option>` : ""}${S.bills.filter(b=>(b.freq||"monthly")==="monthly").map(b=>`<option value="${esc(b.id)}" ${d.billId===b.id?"selected":""}>Included in ${esc(b.name)}</option>`).join("")}</select></div><div class="field"><label class="label" for="dd-${i}">Payment due day (1–31)</label><input id="dd-${i}" type="number" min="1" max="31" step="1" data-list="debts" data-i="${i}" data-f="dueDay" value="${esc(d.dueDay||"")}" ${d.billId?"disabled":""} placeholder="Choose due day"></div></div>
       <input aria-label="Note" placeholder="Note (limit, status…)" data-list="debts" data-i="${i}" data-f="note" value="${esc(d.note||"")}"></div>`).join("")}
     <button class="ghost tiny" data-act="add" data-list="debts">Add card or loan</button>
   </section>
@@ -624,7 +647,7 @@ if (!canStore) $("#status").textContent = "This browser won't save data, so chan
 render();
 
 // Test hook: lets tests/runway.test.js call the planning logic directly. Unused in the browser.
-if (window.__RUNWAY_TEST__) window.__runway = { normalize, sampleState, project, simulate, dueIn, buildImport, categorize, merchantKey,
+if (window.__RUNWAY_TEST__) window.__runway = { normalize, sampleState, project, simulate, dueIn, cashSchedule, vPlan, vBills, buildImport, categorize, merchantKey,
   get: () => S, set: st => { S = normalize(st); } };
 })();
 </script>

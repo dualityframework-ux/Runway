@@ -28,7 +28,7 @@ Runway is a mobile-first cash-flow and debt payoff planner. Most budgeting apps 
 
 1. Start from the current checking balance and its as-of date.
 2. Lay out every scheduled event in the next 62 days:
-   - each bill on its due day, clamped to the last day of shorter months, skipping bills already marked paid for that month;
+   - each bill and separately scheduled debt minimum on its due day, clamped to the last day of shorter months, skipping bills already marked paid for that month;
    - each paycheck, stepping forward from the next payday by the pay interval (14 days for biweekly);
    - any one-time income.
 3. Spread the monthly spending budget evenly across days (`monthly × 12 ÷ 365`) and subtract it daily, so the line reflects groceries and gas between bills.
@@ -54,7 +54,7 @@ The simulation runs twice, once with the extra payment and once with minimums on
 
 ## Tests
 
-`node tests/runway.test.js` runs 17 tests against the app's own code: the day-by-day forecast, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
+`node tests/runway.test.js` runs 27 tests against the app's own code: the day-by-day forecast, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
 
 ## Run it
 
@@ -71,3 +71,24 @@ Built by **Ian Kachadorian**, a finance and data professional with a background 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Scheduling debt payments
+
+In Setup, each card or loan can have a payment due day or link to an existing
+monthly bill. Linked payments count once; the cash forecast uses the larger of
+that bill amount and the linked debt minimums. Separately scheduled payments also
+appear in the Bills checklist. Check a payment off after it has been reflected in
+your checking balance. All events on the balance-as-of date are assumed included
+in that balance; projections start the following day.
+
+Older saved debts are preserved without guessed due dates. Until every active
+debt has a positive minimum payment and a valid schedule, the plan reports an
+incomplete forecast and withholds the room-above-floor estimate. Deleting a linked
+bill also makes the debt unresolved. Extra payments from the payoff simulator
+remain hypothetical and are not automatically deducted from the cash forecast.
+Minimum payments remain scheduled at their entered amount until balances are
+updated; the forecast does not assume the simulator's payoff date.
+
+Browser regression checks run with `python tests/browser_smoke.py` after installing
+Playwright and Chromium (`python -m playwright install chromium`). CI runs them
+alongside the model and contrast checks.
