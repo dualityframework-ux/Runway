@@ -79,6 +79,18 @@ test("an unpaid debt minimum due earlier this month counts too", () => {
   assert.strictEqual(R.project(5).series[0].bal, 1000);
 });
 
+test("the sample always has this month's spending, even on the 1st", () => {
+  for (const day of [new Date(2026, 10, 1), new Date(2026, 10, 4), new Date(2026, 10, 30), new Date(2027, 0, 1)]) {
+    const s = R.sampleState(day), k = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}`;
+    const today = `${k}-${String(day.getDate()).padStart(2, "0")}`;
+    assert.strictEqual(s.log.length, 5, day.toDateString());
+    assert.ok(s.log.every(e => e.date.startsWith(k) && e.date <= today), day.toDateString());
+    assert.strictEqual(Math.round(s.log.reduce((t, e) => t + e.amount, 0) * 100), 25345);
+  }
+  // Mid-month dates keep their spacing: 2, 3, 5, 9 and 11 days back from the 30th.
+  assert.deepStrictEqual(plain(R.sampleState(new Date(2026, 10, 30)).log.map(e => e.date.slice(8))), ["28", "27", "25", "21", "19"]);
+});
+
 test("the sample checks off bills and debt payments due before today", () => {
   const s = R.sampleState(), today = new Date().getDate(), k = Object.keys(s.paid)[0];
   R.set(s);
