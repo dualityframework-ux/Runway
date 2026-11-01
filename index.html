@@ -265,8 +265,8 @@ function validateBackup(value){
 }
 
 // Example household, dated relative to today so the projection always looks live
-function sampleState(){
-  const t = new Date(); t.setHours(12,0,0,0); const k = mkey(t);
+function sampleState(now = new Date()){
+  const t = new Date(now); t.setHours(12,0,0,0); const k = mkey(t);
   const bills = [
     {id:uid(),name:"Rent",day:1,amount:1450},{id:uid(),name:"Car payment",day:12,amount:340},
     {id:uid(),name:"Phone",day:15,amount:65},{id:uid(),name:"Internet",day:18,amount:70},
@@ -280,8 +280,8 @@ function sampleState(){
     {cat:"Groceries",amount:86.42,d:-2,note:"Weekly shop"},{cat:"Gas",amount:48.10,d:-3,note:""},
     {cat:"Dining out",amount:32.75,d:-5,note:"Pizza night"},{cat:"Groceries",amount:64.18,d:-9,note:""},
     {cat:"Other",amount:22.00,d:-11,note:"Haircut"}]
-    .map(e=>({id:uid(),date:iso(addDays(t,e.d)),cat:e.cat,amount:e.amount,note:e.note}))
-    .filter(e=>e.date.startsWith(k));
+    // Keep every example purchase in the current month, so Spending is never empty early in the month.
+    .map(e=>({id:uid(),date:iso(new Date(t.getFullYear(), t.getMonth(), Math.max(1, t.getDate()+e.d), 12)),cat:e.cat,amount:e.amount,note:e.note}));
   return normalize({
     sample:true, asOf:iso(t), checking:3200, savings:1500, floor:1000, extra:100, method:"avalanche",
     pay:{amount:1850,next:iso(addDays(t,5)),everyDays:14,oneOffs:[]},
