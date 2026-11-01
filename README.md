@@ -54,7 +54,7 @@ The simulation runs twice, once with the extra payment and once with minimums on
 
 ## Tests
 
-`node tests/runway.test.js` runs 27 tests against the app's own code: the day-by-day forecast, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
+`node tests/runway.test.js` runs 38 tests against the app's own code: the day-by-day forecast, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
 
 ## Run it
 
@@ -92,3 +92,33 @@ updated; the forecast does not assume the simulator's payoff date.
 Browser regression checks run with `python tests/browser_smoke.py` after installing
 Playwright and Chromium (`python -m playwright install chromium`). CI runs them
 alongside the model and contrast checks.
+
+## Backup validation and recovery
+
+Backups now include a schema version. Existing unversioned backups remain
+supported. Restore validates dates, numeric values, identifiers, collections and
+payment settings before it changes the current plan. A restore must save
+successfully before the app reports success; if storage or validation fails,
+your current plan stays in place. Finite signed values already used for credits
+and overdraft floors are preserved.
+
+Before replacing saved data, Runway retains its previous bytes in
+`runway.v1.previous`. **Copy previous save** retrieves that one earlier version;
+it is not a complete backup history. The explicit two-tap **Erase everything**
+action also clears this previous-save copy. Keeping the previous document uses more
+browser storage. If storage is full, the write fails visibly and the primary
+saved document is preserved.
+
+Damaged saved JSON or an invalid saved document opens a recovery view rather than
+loading sample numbers over it. If the browser prevents reading saved data, automatic saving also pauses so a
+plan the app could not inspect is not overwritten. Reload after access is restored,
+or restore a known backup explicitly. With damaged data, automatic saving pauses until a valid backup is
+explicitly restored. **Copy original saved data** lets you preserve the damaged
+text before repairing it. A successful recovery also keeps those original bytes
+as the previous save. Ordinary edits cannot overwrite a document in recovery.
+
+Storage failures are shown in a persistent status message. Pending edits are
+flushed when the page is hidden, but browser data can still be cleared by the
+browser or operating system; keep an independent backup when the data matters.
+The original JavaScript tests and new browser recovery checks cover malformed
+backups, invalid dates/shapes, quota failures, previous-save protection and reloads.

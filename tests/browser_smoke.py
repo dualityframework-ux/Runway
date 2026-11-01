@@ -37,7 +37,7 @@ with sync_playwright() as p:
     page.get_by_label('Payment due day (1–31)').fill('20')
     page.get_by_label('Payment due day (1–31)').press('Tab')
     # Wait for the normal debounce to persist, then check an actual reload.
-    page.wait_for_function('JSON.parse(localStorage.getItem("runway.v1")).debts[0].dueDay === "20"')
+    page.wait_for_function('Number(JSON.parse(localStorage.getItem("runway.v1")).debts[0].dueDay) === 20')
     page.reload()
     expect(page.get_by_label('Payment due day (1–31)')).to_have_value('20')
     page.locator('nav.tabs a[href="#bills"]').click()
