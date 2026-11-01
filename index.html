@@ -622,6 +622,10 @@ const saved = load();
 S = saved ? normalize(saved) : sampleState();
 if (!canStore) $("#status").textContent = "This browser won't save data, so changes last until you close the page.";
 render();
+
+// Test hook: lets tests/runway.test.js call the planning logic directly. Unused in the browser.
+if (window.__RUNWAY_TEST__) window.__runway = { normalize, sampleState, project, simulate, dueIn, buildImport, categorize, merchantKey,
+  get: () => S, set: st => { S = normalize(st); } };
 })();
 </script>
 

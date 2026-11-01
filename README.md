@@ -1,5 +1,7 @@
 <p align="center"><img src="icon.png" width="96" alt="Runway icon"></p>
 
+[![Test Runway](https://github.com/dualityframework-ux/Runway/actions/workflows/test.yml/badge.svg)](https://github.com/dualityframework-ux/Runway/actions/workflows/test.yml)
+
 # Runway
 
 **How far your cash goes before payday.** [Try it live](https://dualityframework-ux.github.io/Runway/) · [Read the case study](https://dualityframework-ux.github.io/Runway/case-study.html)
@@ -49,6 +51,10 @@ The simulation runs twice, once with the extra payment and once with minimums on
 - Charts are hand-built SVG, with no charting library.
 - State is a single JSON object kept in `localStorage`. The page still works if storage is blocked, for example in a private window.
 - Theme colors are CSS custom properties, with full light and dark palettes.
+
+## Tests
+
+`node tests/runway.test.js` runs 17 tests against the app's own code: the day-by-day forecast, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
 
 ## Run it
 
