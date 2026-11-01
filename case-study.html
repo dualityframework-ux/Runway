@@ -78,7 +78,7 @@ li{margin-bottom:6px}
   <h2>The approach</h2>
 
   <h3>1. Walk the calendar one day at a time</h3>
-  <p>The forecast starts from today's balance and steps forward 60 days. Each bill lands on its due day, clamped to the last day of shorter months, and is skipped if it is already checked off. Each paycheck lands on its schedule. Everyday spending is spread evenly across every day, so the line drifts down between bills the way a real account does.</p>
+  <p>The forecast starts from today's balance and steps forward 60 days. Each bill lands on its due day, clamped to the last day of shorter months, and is skipped if it is already checked off. A bill due earlier this month that is not checked off is still owed, so it comes out of the balance right away. Each paycheck lands on its schedule. Everyday spending is spread evenly across every day, so the line drifts down between bills the way a real account does.</p>
   <div class="formula">balance(day) = balance(day − 1)
              − monthly spending budget × 12 ÷ 365
              − bills due that day

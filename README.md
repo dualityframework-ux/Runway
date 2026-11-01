@@ -28,7 +28,7 @@ Runway is a mobile-first cash-flow and debt payoff planner. Most budgeting apps 
 
 1. Start from the current checking balance and its as-of date.
 2. Lay out every scheduled event in the next 62 days:
-   - each bill and separately scheduled debt minimum on its due day, clamped to the last day of shorter months, skipping bills already marked paid for that month;
+   - each bill and separately scheduled debt minimum on its due day, clamped to the last day of shorter months, skipping bills already marked paid for that month. A bill due earlier in the current month that is not checked off is still owed, so it is subtracted on the first day;
    - each paycheck, stepping forward from the next payday by the pay interval (14 days for biweekly);
    - any one-time income.
 3. Spread the monthly spending budget evenly across days (`monthly × 12 ÷ 365`) and subtract it daily, so the line reflects groceries and gas between bills.
@@ -54,7 +54,7 @@ The simulation runs twice, once with the extra payment and once with minimums on
 
 ## Tests
 
-`node tests/runway.test.js` runs 38 tests against the app's own code: the day-by-day forecast, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
+`node tests/runway.test.js` runs 42 tests against the app's own code: the day-by-day forecast, unpaid bills from earlier in the month, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
 
 ## Run it
 
