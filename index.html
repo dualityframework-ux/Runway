@@ -85,6 +85,7 @@ input.num{text-align:right}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px}
+.log-grid .wide{grid-column:1/-1}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap}
 .btn.ghost{background:transparent;color:var(--accent)}
 .btn.tiny{padding:4px 9px;font-size:.8rem}
@@ -132,7 +133,7 @@ nav.tabs a.on{color:var(--accent);background:var(--accent-soft)}
   <div id="banner"></div>
   <div id="view"><div class="sheet empty">Opening your ledger…</div></div>
   <div class="status" id="status" role="status" aria-live="polite"></div>
-  <footer class="by">Built by Ian Kachadorian · Your numbers stay on this device · <a href="case-study.html" style="color:inherit">Case study</a></footer>
+  <footer class="by">Built by <a href="https://dualityframework-ux.github.io/duality-framework/" style="color:inherit">Ian Kachadorian</a> · Your numbers stay on this device · <a href="case-study.html" style="color:inherit">Case study</a></footer>
 </div>
 
 <nav class="tabs" id="tabs">
@@ -562,10 +563,10 @@ function vSpend(){
   const extraCats = Object.keys(by).filter(c=>!cats.includes(c));
   return `<section class="sheet">
     <h2>Log spending</h2>
-    <div class="grid3">
+    <div class="grid2 log-grid">
       <div class="field"><label class="label" for="sc">Category</label><select id="sc">${cats.concat(cats.includes("Other")?[]:["Other"]).map(c=>`<option>${esc(c)}</option>`).join("")}</select></div>
       <div class="field"><label class="label" for="sa">Amount</label><input id="sa" class="num" inputmode="decimal" placeholder="0.00"></div>
-      <div class="field"><label class="label" for="sd">Date</label><input id="sd" type="date" value="${iso(new Date())}"></div>
+      <div class="field wide"><label class="label" for="sd">Date</label><input id="sd" type="date" value="${iso(new Date())}"></div>
     </div>
     <div class="field"><label class="label" for="sn">Note</label><input id="sn" placeholder="Optional"></div>
     <button data-act="log">Add to ${monthName(k).split(" ")[0]}</button>
