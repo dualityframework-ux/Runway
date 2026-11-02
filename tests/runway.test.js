@@ -385,4 +385,50 @@ test("legacy signed values used for credits and overdraft floors are preserved",
   assert.strictEqual(candidate.bills[0].amount,-25);
   assert.strictEqual(candidate.debts[0].balance,-50);
 });
+// ---------- budget vs. actual ----------
+const bvaState = log => ({ asOf: "2026-11-15", checking: 1000, floor: 0, pay: { amount: 0, next: "2026-11-15", everyDays: 14, oneOffs: [] },
+  bills: [], debts: [], paid: {}, budget: [{ id: "g", name: "Groceries", monthly: 450 }, { id: "f", name: "Gas", monthly: 180 }, { id: "d", name: "Dining out", monthly: 150 }],
+  log: log.map(([date, cat, amount, note], i) => ({ id: "e" + i, date, cat, amount, note: note || "" })) });
+
+test("a closed month compares actual spending with the full budget", () => {
+  R.set(bvaState([["2026-10-03", "Groceries", 160], ["2026-10-20", "Groceries", 200, "Costco"], ["2026-10-27", "Groceries", 160],
+    ["2026-10-09", "Gas", 150], ["2026-10-12", "Dining out", 140], ["2026-10-14", "Coffee", 30], ["2026-11-02", "Groceries", 999]]));
+  const v = R.budgetVariance("2026-10", new Date(2026, 10, 15, 12));
+  assert.strictEqual(v.phase, "closed");
+  assert.deepStrictEqual(plain(v.rows.map(r => [r.cat, r.base, r.actual, r.variance, r.status])), [
+    ["Groceries", 450, 520, -70, "over"], ["Gas", 180, 150, 30, "under"], ["Dining out", 150, 140, 10, "on track"], ["Coffee", 0, 30, -30, "unbudgeted"]]);
+  assert.deepStrictEqual(plain(v.total), { monthly: 780, base: 780, actual: 840, variance: -60 });
+  assert.deepStrictEqual(plain(R.varianceNotes(v)), [
+    "Groceries is $70 over budget (16%): 3 purchases, largest $200.00 on Oct 20 (Costco).",
+    "Gas is $30 under budget (17%).",
+    "Coffee: $30 spent with no budget set."]);
+});
+
+test("the current month prorates each budget to date", () => {
+  R.set(bvaState([["2026-11-02", "Groceries", 150], ["2026-11-09", "Groceries", 150], ["2026-11-10", "Gas", 80]]));
+  const v = R.budgetVariance("2026-11", new Date(2026, 10, 15, 12));
+  assert.strictEqual(v.phase, "open");
+  assert.deepStrictEqual(plain(v.rows.map(r => [r.cat, r.base, r.actual, r.variance, r.status])), [
+    ["Groceries", 225, 300, -75, "over"], ["Gas", 90, 80, 10, "on track"], ["Dining out", 75, 0, 75, "under"]]);
+  // Equal gaps keep budget order.
+  assert.match(R.varianceNotes(v)[0], /^Groceries is \$75 over budget to date \(33%\): 2 purchases, largest \$150\.00 on Nov 2\.$/);
+  assert.match(R.varianceNotes(v)[1], /^Dining out is \$75 under budget to date \(100%\)\.$/);
+});
+
+test("early in the month there is no pace verdict, only what is left", () => {
+  R.set(bvaState([["2026-11-02", "Groceries", 150]]));
+  const v = R.budgetVariance("2026-11", new Date(2026, 10, 3, 12));
+  assert.strictEqual(v.judge, false);
+  assert.ok(v.rows.every(r => r.status === "early"));
+  assert.deepStrictEqual(plain(v.rows[0]).base, 450);
+  assert.strictEqual(v.rows[0].variance, 300);
+  assert.deepStrictEqual(plain(R.varianceNotes(v)), ["Day 3 of 30: too early to judge pace, so each budget is shown in full. Groceries has used 33% of its monthly budget."]);
+});
+
+test("a month within tolerance says so, and a future month has nothing to compare", () => {
+  R.set(bvaState([["2026-10-05", "Groceries", 440], ["2026-10-06", "Gas", 175], ["2026-10-07", "Dining out", 150]]));
+  assert.deepStrictEqual(plain(R.varianceNotes(R.budgetVariance("2026-10", new Date(2026, 10, 15, 12)))), ["Every category is within $25 or 10% of its budget."]);
+  assert.deepStrictEqual(plain(R.varianceNotes(R.budgetVariance("2026-12", new Date(2026, 10, 15, 12)))), ["Nothing to compare yet: this month has not started."]);
+});
+
 console.log(`all ${passed} Runway tests passed`);

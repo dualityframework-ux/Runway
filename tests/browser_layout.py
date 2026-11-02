@@ -1,4 +1,4 @@
-"""Spending date field shows its whole value; the footer links back to the portfolio."""
+"""Spending date field shows its whole value, budget vs. actual fits, and the footer links back to the portfolio."""
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
@@ -21,8 +21,11 @@ with sync_playwright() as p:
         need, have = date.evaluate(NATURAL), date.bounding_box()['width']
         assert have >= need, f'Date field is {have:.0f}px but needs {need:.0f}px at {width}px'
         assert page.evaluate('document.documentElement.scrollWidth') <= width
+        expect(page.get_by_role('heading', name='Budget vs. actual')).to_be_visible()
+        expect(page.locator('table.bva tbody tr')).to_have_count(5)  # four sample categories plus the total
+        assert page.locator('table.bva').bounding_box()['width'] <= width
         link = page.locator('footer.by').get_by_role('link', name='Ian Kachadorian')
         expect(link).to_have_attribute('href', 'https://dualityframework-ux.github.io/duality-framework/')
         page.close()
     browser.close()
-print('Layout checks passed: full spending date at 320/390/1100px, footer links to the portfolio.')
+print('Layout checks passed: full spending date and budget vs. actual at 320/390/1100px, footer links to the portfolio.')
