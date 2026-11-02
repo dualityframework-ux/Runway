@@ -21,6 +21,7 @@ Runway is a mobile-first cash-flow and debt payoff planner. Most budgeting apps 
 - **Bill checklist.** Check off bills as you pay them each month. Paid bills drop out of the forecast automatically. Bills can be monthly, every 3 or 6 months, yearly or one-time, and only show up in the months they're due.
 - **Debt payoff simulator.** Compares avalanche (highest APR first) and snowball (smallest balance first), shows the debt-free date with and without an extra monthly payment, and calculates the interest saved. Supports promo rates with an end date: the rate switches on schedule, and it warns how much will still be owed when the promo ends.
 - **Spending log.** Log purchases by category and track them against a monthly budget. Import a bank statement CSV: it detects the columns (including separate debit and credit columns), guesses categories from merchant names, skips deposits and duplicates, and shows a preview to correct before anything is added. Corrections are remembered for future imports.
+- **Budget vs. actual.** A variance table for each month, with a short written explanation of the biggest gaps. Past months compare with the full budget; the current month prorates each budget to date from day 7 (earlier, it shows what is left instead of judging pace). A gap is only called out when it is at least $25 and 10% of the budget, and overspending names the number of purchases and the largest one.
 - **Private by design.** No account, no bank login, no server. Data is saved in the browser on your own device, with a copy-and-paste backup to move it to another device.
 - **Works like an app.** Bottom tab navigation, light and dark themes, and an icon for adding it to a phone's home screen.
 
@@ -54,7 +55,7 @@ The simulation runs twice, once with the extra payment and once with minimums on
 
 ## Tests
 
-`node tests/runway.test.js` runs 42 tests against the app's own code: the day-by-day forecast, unpaid bills from earlier in the month, short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
+`node tests/runway.test.js` runs 47 tests against the app's own code: the day-by-day forecast, unpaid bills from earlier in the month, budget vs. actual (closed, current and early months), short-month bills, bill frequencies, interest accrual, avalanche vs. snowball order, promo rate switches, and bank CSV import (both sign conventions, debit/credit columns, duplicates, learned categories). They load the script straight from `index.html` in a minimal fake browser, so the tests check exactly what ships. GitHub Actions runs them on every push.
 
 ## Run it
 

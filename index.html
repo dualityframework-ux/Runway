@@ -109,6 +109,7 @@ table.imp td{vertical-align:middle}
 .tbl td:first-child{font-family:var(--f-body)}
 .tbl tr.focus td{color:var(--accent);font-weight:600}
 .scroll{overflow-x:auto}
+.notes{margin:10px 0 0;padding-left:1.1em;font-size:.88rem}.notes li{margin:4px 0}
 .editrow{display:grid;gap:8px;padding:10px 0;border-top:1px solid var(--rule)}
 .editrow:first-of-type{border-top:0}
 .status{font-size:.75rem;color:var(--muted)}
@@ -554,6 +555,75 @@ function vDebt(){
   </section>`;
 }
 
+// ---------- budget vs. actual ----------
+// Past months compare with the full budget. The current month prorates each budget to date,
+// but only from day 7: earlier than that, one purchase swamps a prorated budget.
+const PACE_FROM_DAY = 7, FLAG_DOLLARS = 25, FLAG_SHARE = 0.10;
+function budgetVariance(k, now = new Date()){
+  const [y,m] = k.split("-").map(Number), days = dim(y, m-1), nowKey = mkey(now);
+  const phase = k < nowKey ? "closed" : k > nowKey ? "future" : "open";
+  const elapsed = phase === "closed" ? days : phase === "future" ? 0 : now.getDate();
+  const judge = phase === "closed" || (phase === "open" && elapsed >= PACE_FROM_DAY);
+  const share = phase === "open" && judge ? elapsed / days : 1;
+  const r2 = x => Math.round(x * 100) / 100;
+  const by = {}; S.log.filter(e => e.date.startsWith(k)).forEach(e => (by[e.cat] ||= []).push(e));
+  const rows = S.budget.map(b => ({cat: b.name, monthly: +b.monthly || 0}))
+    .concat(Object.keys(by).filter(c => !S.budget.some(b => b.name === c)).map(c => ({cat: c, monthly: 0})));
+  for (const r of rows){
+    const its = by[r.cat] || [];
+    r.actual = r2(its.reduce((t, e) => t + (+e.amount || 0), 0));
+    r.base = r2(r.monthly * share);            // budget to date (open month) or full budget
+    r.variance = r2(r.base - r.actual);        // positive = under budget
+    r.pct = r.base ? r.variance / r.base : null;
+    r.count = its.length;
+    r.largest = its.slice().sort((a, b) => b.amount - a.amount)[0] || null;
+    r.status = !judge ? "early"
+      : r.monthly === 0 ? (r.actual > 0 ? "unbudgeted" : "none")
+      : Math.abs(r.variance) >= Math.max(FLAG_DOLLARS, FLAG_SHARE * r.base) ? (r.variance < 0 ? "over" : "under") : "on track";
+  }
+  const total = {monthly: r2(rows.reduce((t, r) => t + r.monthly, 0)), base: r2(rows.reduce((t, r) => t + r.base, 0)), actual: r2(rows.reduce((t, r) => t + r.actual, 0))};
+  total.variance = r2(total.base - total.actual);
+  return {k, phase, elapsed, days, judge, rows, total};
+}
+
+function varianceNotes(v){
+  if (v.phase === "future") return ["Nothing to compare yet: this month has not started."];
+  if (!v.judge){
+    const used = v.rows.filter(r => r.monthly > 0 && r.actual > 0).sort((a, b) => b.actual / b.monthly - a.actual / a.monthly)[0];
+    return [`Day ${v.elapsed} of ${v.days}: too early to judge pace, so each budget is shown in full.` +
+      (used ? ` ${used.cat} has used ${Math.round(used.actual / used.monthly * 100)}% of its monthly budget.` : "")];
+  }
+  const toDate = v.phase === "open" ? " to date" : "";
+  const notes = v.rows.filter(r => ["over", "under", "unbudgeted"].includes(r.status))
+    .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance)).slice(0, 3).map(r => {
+      if (r.status === "unbudgeted") return `${r.cat}: ${money(r.actual, false)} spent with no budget set.`;
+      const pct = Math.round(Math.abs(r.pct) * 100);
+      if (r.status === "under") return `${r.cat} is ${money(r.variance, false)} under budget${toDate} (${pct}%).`;
+      const l = r.largest;
+      return `${r.cat} is ${money(-r.variance, false)} over budget${toDate} (${pct}%): ${r.count} purchase${r.count === 1 ? "" : "s"}, largest ${money(l.amount)} on ${short(D(l.date))}${l.note ? ` (${l.note})` : ""}.`;
+    });
+  return notes.length ? notes : [`Every category is within ${money(FLAG_DOLLARS, false)} or ${FLAG_SHARE * 100}% of its budget${toDate}.`];
+}
+
+function vBudgetVsActual(k){
+  const v = budgetVariance(k);
+  if (!S.budget.length && !v.rows.length) return "";
+  const head = v.judge ? (v.phase === "open" ? "Budget to date" : "Budget") : "Budget";
+  const last = v.judge ? "Variance" : "Left";
+  const cell = r => v.judge ? `<span class="${r.variance < 0 ? "neg" : ""}">${money(r.variance, false)}</span>` : money(r.variance, false);
+  const scope = v.phase === "open" && v.judge ? `Through day ${v.elapsed} of ${v.days}: each budget is prorated to date.`
+    : v.phase === "closed" ? "Full month against the full budget." : "";
+  return `<section class="sheet" aria-labelledby="bva-h">
+    <h2 id="bva-h">Budget vs. actual</h2>
+    ${scope ? `<p class="sub">${scope} Positive variance is under budget.</p>` : ""}
+    <div class="scroll"><table class="tbl bva"><thead><tr><th>Category</th><th>${head}</th><th>Actual</th><th>${last}</th></tr></thead><tbody>
+      ${v.rows.map(r => `<tr><td>${esc(r.cat)}</td><td>${money(r.base, false)}</td><td>${money(r.actual, false)}</td><td>${cell(r)}</td></tr>`).join("")}
+      <tr class="focus"><td>Total</td><td>${money(v.total.base, false)}</td><td>${money(v.total.actual, false)}</td><td>${money(v.total.variance, false)}</td></tr>
+    </tbody></table></div>
+    <ul class="notes">${varianceNotes(v).map(n => `<li>${esc(n)}</li>`).join("")}</ul>
+  </section>`;
+}
+
 function vSpend(){
   const k = spendMonth || todayKey(); spendMonth = k;
   const items = S.log.filter(e=>e.date.startsWith(k)).sort((a,b)=>b.date.localeCompare(a.date));
@@ -589,6 +659,7 @@ function vSpend(){
       return `<div class="cat"><div class="seg"><span>${esc(b.name)}</span><span class="num sub">${money(s,false)} / ${money(b.monthly,false)}</span></div><div class="bar"><i class="${pct>100?"over":""}" style="width:${Math.min(100,pct)}%"></i></div></div>`; }).join("")}
     ${extraCats.map(c=>`<div class="cat"><div class="seg"><span>${esc(c)}</span><span class="num sub">${money(by[c],false)}</span></div></div>`).join("")}</div>
   </section>
+  ${vBudgetVsActual(k)}
   <section class="sheet"><h2>Entries</h2>
     <div class="rows">${items.map(e=>`<div class="row"><span class="d">${short(D(e.date))}</span><span class="n">${esc(e.cat)}${e.note?`<small>${esc(e.note)}</small>`:""}</span><span class="a">${money(e.amount)} <button class="x" data-act="unlog" data-id="${e.id}" aria-label="Delete entry">×</button></span></div>`).join("") || '<div class="empty">Nothing logged this month yet.</div>'}</div>
   </section>`;
@@ -783,7 +854,7 @@ if (recoveryRaw !== null || initialReadFailed) location.hash="setup";
 render();
 
 // Test hook: lets tests/runway.test.js call the planning logic directly. Unused in the browser.
-if (window.__RUNWAY_TEST__) window.__runway = { normalize, validateBackup, restoreBackup, erasePlan, flush, load, sampleState, project, simulate, dueIn, cashSchedule, vPlan, vBills, buildImport, categorize, merchantKey,
+if (window.__RUNWAY_TEST__) window.__runway = { normalize, validateBackup, restoreBackup, erasePlan, flush, load, sampleState, budgetVariance, varianceNotes, project, simulate, dueIn, cashSchedule, vPlan, vBills, buildImport, categorize, merchantKey,
   get: () => S, set: st => { S = normalize(st); } };
 })();
 </script>
